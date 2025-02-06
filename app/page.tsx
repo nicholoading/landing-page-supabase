@@ -1,15 +1,24 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/components/ui/use-toast"
-import { Loader2 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { supabase } from "@/lib/supabase"; // 🔹 Import Supabase client
+
+const generatePassword = () => Math.random().toString(36).slice(-8); // 🔹 Generate 8-char random password
 
 export default function RegistrationForm() {
   const [formData, setFormData] = useState({
@@ -22,99 +31,215 @@ export default function RegistrationForm() {
     category: "",
     city: "",
     state: "",
-    teamMembers: [
-      {
-        name: "",
-        ic: "",
-        gender: "",
-        race: "",
-        grade: "",
-        schoolName: "",
-        parentName: "",
-        parentPhone: "",
-        codingExperience: "",
-        size: "",
-      },
-      {
-        name: "",
-        ic: "",
-        gender: "",
-        race: "",
-        grade: "",
-        schoolName: "",
-        parentName: "",
-        parentPhone: "",
-        codingExperience: "",
-        size: "",
-      },
-      {
-        name: "",
-        ic: "",
-        gender: "",
-        race: "",
-        grade: "",
-        schoolName: "",
-        parentName: "",
-        parentPhone: "",
-        codingExperience: "",
-        size: "",
-      },
-    ],
     teacherName: "",
-    teacherIC: "",
+    teacherEmail: "",
+    teacherIC: "", // 🔹 Now included
     teacherPhone: "",
     teacherSize: "",
     agreeToTerms: false,
-  })
-  const [isLoading, setIsLoading] = useState(false)
-  const { toast } = useToast()
+    teamMembers: Array(3).fill({
+      name: "",
+      ic: "",
+      gender: "",
+      race: "",
+      grade: "",
+      parentName: "",
+      parentPhone: "",
+      parentEmail: "", // 🔹 Now included
+      size: "",
+    }),
+  });
+
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
 
   const handleChange = (name: string, value: string | boolean) => {
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-  const handleTeamMemberChange = (index: number, field: string, value: string | string[]) => {
-    const updatedTeamMembers = [...formData.teamMembers]
-    updatedTeamMembers[index] = { ...updatedTeamMembers[index], [field]: value }
-    setFormData((prev) => ({ ...prev, teamMembers: updatedTeamMembers }))
-  }
+  const handleTeamMemberChange = (
+    index: number,
+    field: string,
+    value: string
+  ) => {
+    const updatedTeamMembers = [...formData.teamMembers];
+    updatedTeamMembers[index] = {
+      ...updatedTeamMembers[index],
+      [field]: value,
+    };
+    setFormData((prev) => ({ ...prev, teamMembers: updatedTeamMembers }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
+    e.preventDefault();
+    setIsLoading(true);
 
-    try {
-      const response = await fetch("/api/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      })
+    // 🔹 Step 1: Check if team name exists
+    const { data: existingTeams, error: fetchError } = await supabase
+      .from("teams")
+      .select("teamName")
+      .eq("teamName", formData.teamName);
 
-      const data = await response.json()
+    if (fetchError) {
+      toast({
+        title: "Error",
+        description: "Failed to check existing teams.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
 
-      if (response.ok) {
-        toast({
-          title: "Registration Successful",
-          description: "Your team has been registered successfully!",
-          duration: 5000,
-        })
-        // Reset form or redirect to a success page
-      } else {
-        throw new Error(data.message || "Registration failed")
-      }
-    } catch (error) {
+    if (existingTeams.length > 0) {
       toast({
         title: "Registration Failed",
-        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        description: "Team name is taken.",
         variant: "destructive",
-        duration: 5000,
-      })
-    } finally {
-      setIsLoading(false)
+      });
+      setIsLoading(false);
+      return;
     }
-  }
+
+    // 🔹 Step 2: Check for duplicate ICs
+    const icSet = new Set();
+    icSet.add(formData.teacherIC);
+
+    for (const member of formData.teamMembers) {
+      if (icSet.has(member.ic)) {
+        toast({
+          title: "Error",
+          description: `Duplicate IC: ${member.ic}`,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+      icSet.add(member.ic);
+    }
+
+    // 🔹 Step 3: Check for duplicate emails
+    const emailSet = new Set();
+    emailSet.add(formData.teacherPhone);
+
+    for (const member of formData.teamMembers) {
+      if (emailSet.has(member.parentEmail)) {
+        toast({
+          title: "Error",
+          description: `Duplicate email: ${member.parentEmail}`,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+      emailSet.add(member.parentEmail);
+    }
+
+    // 🔹 Step 4: Generate random passwords
+    const teacherPassword = generatePassword();
+    const teamPasswords = formData.teamMembers.map(() => generatePassword());
+
+    // 🔹 Step 5: Insert into Supabase
+    try {
+      const { data, error } = await supabase.from("teams").insert([
+        {
+          teamName: formData.teamName,
+          representingSchool: formData.representingSchool,
+          schoolName: formData.schoolName,
+          schoolAddress: formData.schoolAddress,
+          postalCode: formData.postalCode,
+          educationLevel: formData.educationLevel,
+          category: formData.category,
+          city: formData.city,
+          state: formData.state,
+          teacherName: formData.teacherName,
+          teacherEmail: formData.teacherEmail,
+          teacherIC: formData.teacherIC, // 🔹 Teacher IC is now stored
+          teacherPhone: formData.teacherPhone,
+          size: formData.teacherSize,
+          teacherPassword: teacherPassword,
+          registrationStatus: "Pending",
+
+          // Team Member 1
+          teamMember1Name: formData.teamMembers[0]?.name || "",
+          teamMember1IC: formData.teamMembers[0]?.ic || "",
+          teamMember1Gender: formData.teamMembers[0]?.gender || "",
+          teamMember1Race: formData.teamMembers[0]?.race || "",
+          teamMember1Grade: formData.teamMembers[0]?.grade || "",
+          teamMember1ParentName: formData.teamMembers[0]?.parentName || "",
+          teamMember1ParentPhone: formData.teamMembers[0]?.parentPhone || "",
+          teamMember1ParentEmail: formData.teamMembers[0]?.parentEmail || "", // 🔹 Now stored
+          teamMember1Size: formData.teamMembers[0]?.size || "",
+          teamMember1Password: teamPasswords[0] || "",
+
+          // Team Member 2
+          teamMember2Name: formData.teamMembers[1]?.name || "",
+          teamMember2IC: formData.teamMembers[1]?.ic || "",
+          teamMember2Gender: formData.teamMembers[1]?.gender || "",
+          teamMember2Race: formData.teamMembers[1]?.race || "",
+          teamMember2Grade: formData.teamMembers[1]?.grade || "",
+          teamMember2ParentName: formData.teamMembers[1]?.parentName || "",
+          teamMember2ParentPhone: formData.teamMembers[1]?.parentPhone || "",
+          teamMember2ParentEmail: formData.teamMembers[1]?.parentEmail || "", // 🔹 Now stored
+          teamMember2Size: formData.teamMembers[1]?.size || "",
+          teamMember2Password: teamPasswords[1] || "",
+
+          // Team Member 3
+          teamMember3Name: formData.teamMembers[2]?.name || "",
+          teamMember3IC: formData.teamMembers[2]?.ic || "",
+          teamMember3Gender: formData.teamMembers[2]?.gender || "",
+          teamMember3Race: formData.teamMembers[2]?.race || "",
+          teamMember3Grade: formData.teamMembers[2]?.grade || "",
+          teamMember3ParentName: formData.teamMembers[2]?.parentName || "",
+          teamMember3ParentPhone: formData.teamMembers[2]?.parentPhone || "",
+          teamMember3ParentEmail: formData.teamMembers[2]?.parentEmail || "", // 🔹 Now stored
+          teamMember3Size: formData.teamMembers[2]?.size || "",
+          teamMember3Password: teamPasswords[2] || "",
+        },
+      ]);
+
+      if (error) throw error;
+
+      toast({ title: "Success", description: "Team registered successfully!" });
+
+      // 🔹 Reset Form
+      setFormData({
+        teamName: "",
+        representingSchool: "",
+        schoolName: "",
+        schoolAddress: "",
+        postalCode: "",
+        educationLevel: "",
+        category: "",
+        city: "",
+        state: "",
+        teacherName: "",
+        teacherIC: "", // 🔹 Ensure reset
+        teacherPhone: "",
+        teacherEmail:"",
+        teacherSize: "",
+        agreeToTerms: false,
+        teamMembers: Array(3).fill({
+          name: "",
+          ic: "",
+          gender: "",
+          race: "",
+          grade: "",
+          parentName: "",
+          parentPhone: "",
+          parentEmail: "", // 🔹 Ensure reset
+          size: "",
+        }),
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Registration failed.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const states = [
     "Johor",
@@ -133,7 +258,7 @@ export default function RegistrationForm() {
     "Kuala Lumpur",
     "Labuan",
     "Putrajaya",
-  ]
+  ];
 
   const races = [
     "Melayu",
@@ -151,7 +276,7 @@ export default function RegistrationForm() {
     "Penan",
     "Lain-lain bumiputra",
     "Lain-lain kaum",
-  ]
+  ];
 
   const grades = [
     "Primary 6 (12 years old)",
@@ -160,9 +285,17 @@ export default function RegistrationForm() {
     "Form 1 (13 years old)",
     "Form 2 (14 years old)",
     "Form 3 (15 years old)",
-  ]
+  ];
 
-  const codingExperiences = ["None", "Scratch", "Mblock", "Python", "JavaScript", "HTML/CSS", "Other"]
+  const codingExperiences = [
+    "None",
+    "Scratch",
+    "Mblock",
+    "Python",
+    "JavaScript",
+    "HTML/CSS",
+    "Other",
+  ];
 
   const sizes = [
     { label: '3XS - 32"', value: "3xs" },
@@ -174,7 +307,7 @@ export default function RegistrationForm() {
     { label: 'XL - 44"', value: "xl" },
     { label: '2XL - 46"', value: "2xl" },
     { label: '3XL - 48"', value: "3xl" },
-  ]
+  ];
 
   return (
     <Card className="shadow-lg">
@@ -196,7 +329,9 @@ export default function RegistrationForm() {
             <Label>Representing School?</Label>
             <RadioGroup
               value={formData.representingSchool}
-              onValueChange={(value) => handleChange("representingSchool", value)}
+              onValueChange={(value) =>
+                handleChange("representingSchool", value)
+              }
               required
             >
               <div className="flex items-center space-x-2">
@@ -259,18 +394,28 @@ export default function RegistrationForm() {
 
           <div className="space-y-2">
             <Label>Which category will the team be participating?</Label>
-            <RadioGroup value={formData.category} onValueChange={(value) => handleChange("category", value)} required>
+            <RadioGroup
+              value={formData.category}
+              onValueChange={(value) => handleChange("category", value)}
+              required
+            >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="junior-scratch" id="junior-scratch" />
-                <Label htmlFor="junior-scratch">Junior Scratch (Primary school)</Label>
+                <Label htmlFor="junior-scratch">
+                  Junior Scratch (Primary school)
+                </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="senior-scratch" id="senior-scratch" />
-                <Label htmlFor="senior-scratch">Senior Scratch (Secondary school)</Label>
+                <Label htmlFor="senior-scratch">
+                  Senior Scratch (Secondary school)
+                </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="senior-html" id="senior-html" />
-                <Label htmlFor="senior-html">Senior HTML/CSS (Secondary school)</Label>
+                <Label htmlFor="senior-html">
+                  Senior HTML/CSS (Secondary school)
+                </Label>
               </div>
             </RadioGroup>
           </div>
@@ -288,7 +433,11 @@ export default function RegistrationForm() {
 
           <div className="space-y-2">
             <Label htmlFor="state">State</Label>
-            <Select value={formData.state} onValueChange={(value) => handleChange("state", value)} required>
+            <Select
+              value={formData.state}
+              onValueChange={(value) => handleChange("state", value)}
+              required
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select your state" />
               </SelectTrigger>
@@ -308,7 +457,9 @@ export default function RegistrationForm() {
               alt="T-shirt size chart"
               className="w-full max-w-md mx-auto mb-2"
             />
-            <p className="text-sm text-gray-500 text-center">T-shirt size chart (for reference)</p>
+            <p className="text-sm text-gray-500 text-center">
+              T-shirt size chart (for reference)
+            </p>
           </div>
 
           <div className="space-y-4">
@@ -319,18 +470,24 @@ export default function RegistrationForm() {
                 <Input
                   placeholder="Student Name"
                   value={member.name}
-                  onChange={(e) => handleTeamMemberChange(index, "name", e.target.value)}
+                  onChange={(e) =>
+                    handleTeamMemberChange(index, "name", e.target.value)
+                  }
                   required
                 />
                 <Input
                   placeholder="IC Number"
                   value={member.ic}
-                  onChange={(e) => handleTeamMemberChange(index, "ic", e.target.value)}
+                  onChange={(e) =>
+                    handleTeamMemberChange(index, "ic", e.target.value)
+                  }
                   required
                 />
                 <Select
                   value={member.gender}
-                  onValueChange={(value) => handleTeamMemberChange(index, "gender", value)}
+                  onValueChange={(value) =>
+                    handleTeamMemberChange(index, "gender", value)
+                  }
                   required
                 >
                   <SelectTrigger>
@@ -343,7 +500,9 @@ export default function RegistrationForm() {
                 </Select>
                 <Select
                   value={member.race}
-                  onValueChange={(value) => handleTeamMemberChange(index, "race", value)}
+                  onValueChange={(value) =>
+                    handleTeamMemberChange(index, "race", value)
+                  }
                   required
                 >
                   <SelectTrigger>
@@ -359,7 +518,9 @@ export default function RegistrationForm() {
                 </Select>
                 <Select
                   value={member.grade}
-                  onValueChange={(value) => handleTeamMemberChange(index, "grade", value)}
+                  onValueChange={(value) =>
+                    handleTeamMemberChange(index, "grade", value)
+                  }
                   required
                 >
                   <SelectTrigger>
@@ -374,27 +535,36 @@ export default function RegistrationForm() {
                   </SelectContent>
                 </Select>
                 <Input
-                  placeholder="School's Name"
-                  value={member.schoolName}
-                  onChange={(e) => handleTeamMemberChange(index, "schoolName", e.target.value)}
+                  placeholder="Parent's/Guardian's Name"
+                  value={member.parentName}
+                  onChange={(e) =>
+                    handleTeamMemberChange(index, "parentName", e.target.value)
+                  }
                   required
                 />
                 <Input
-                  placeholder="Parent's/Guardian's Name"
-                  value={member.parentName}
-                  onChange={(e) => handleTeamMemberChange(index, "parentName", e.target.value)}
+                  type="email"
+                  placeholder="Parent's/Guardian's Email"
+                  value={member.parentEmail}
+                  onChange={(e) =>
+                    handleTeamMemberChange(index, "parentEmail", e.target.value)
+                  }
                   required
                 />
                 <Input
                   type="tel"
                   placeholder="Parent's/Guardian's Mobile Number"
                   value={member.parentPhone}
-                  onChange={(e) => handleTeamMemberChange(index, "parentPhone", e.target.value)}
+                  onChange={(e) =>
+                    handleTeamMemberChange(index, "parentPhone", e.target.value)
+                  }
                   required
                 />
                 <Select
                   value={member.codingExperience}
-                  onValueChange={(value) => handleTeamMemberChange(index, "codingExperience", value)}
+                  onValueChange={(value) =>
+                    handleTeamMemberChange(index, "codingExperience", value)
+                  }
                   required
                 >
                   <SelectTrigger>
@@ -410,7 +580,9 @@ export default function RegistrationForm() {
                 </Select>
                 <Select
                   value={member.size}
-                  onValueChange={(value) => handleTeamMemberChange(index, "size", value)}
+                  onValueChange={(value) =>
+                    handleTeamMemberChange(index, "size", value)
+                  }
                   required
                 >
                   <SelectTrigger>
@@ -449,7 +621,18 @@ export default function RegistrationForm() {
               onChange={(e) => handleChange("teacherPhone", e.target.value)}
               required
             />
-            <Select value={formData.teacherSize} onValueChange={(value) => handleChange("teacherSize", value)} required>
+            <Input
+              type="email"
+              placeholder="Teacher Email"
+              value={formData.teacherEmail}
+              onChange={(e) => handleChange("teacherEmail", e.target.value)}
+              required
+            />
+            <Select
+              value={formData.teacherSize}
+              onValueChange={(value) => handleChange("teacherSize", value)}
+              required
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select Teacher T-shirt size" />
               </SelectTrigger>
@@ -467,14 +650,18 @@ export default function RegistrationForm() {
             <Checkbox
               id="terms"
               checked={formData.agreeToTerms}
-              onCheckedChange={(checked) => handleChange("agreeToTerms", checked)}
+              onCheckedChange={(checked) =>
+                handleChange("agreeToTerms", checked)
+              }
               required
             />
             <Label htmlFor="terms" className="text-sm">
-              I understand and agree that the text, photographs, and/or videos containing the words, image and/or voice
-              of all the participants above may be used in the production of instructional and/or promotional materials
-              produced by or on behalf of Realfun Academy Sdn. Bhd. and that such materials may be distributed or
-              broadcast to the public and displayed publicly
+              I understand and agree that the text, photographs, and/or videos
+              containing the words, image and/or voice of all the participants
+              above may be used in the production of instructional and/or
+              promotional materials produced by or on behalf of Realfun Academy
+              Sdn. Bhd. and that such materials may be distributed or broadcast
+              to the public and displayed publicly
             </Label>
           </div>
 
@@ -491,6 +678,5 @@ export default function RegistrationForm() {
         </form>
       </CardContent>
     </Card>
-  )
+  );
 }
-
